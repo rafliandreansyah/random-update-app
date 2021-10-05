@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"os"
-	"time"
+	"strconv"
+	"text/template"
 )
 
 type Object struct {
@@ -20,7 +22,7 @@ type Status struct {
 
 const FILENAME = "data/data.json"
 
-func readFile() string {
+func readFile() (string, int, int) {
 
 	var dataStatus Object
 
@@ -28,20 +30,20 @@ func readFile() string {
 
 	data, err := ioutil.ReadFile(FILENAME)
 	if err != nil {
-		return fmt.Sprintf("Error Readfile: ", err.Error())
+		return fmt.Sprintf("Error Readfile: %s", err.Error()), 0, 0
 	}
 
 	err = json.Unmarshal(data, &dataStatus)
 	if err != nil {
-		return fmt.Sprintf("Error ConvertData: ", err.Error())
+		return fmt.Sprintf("Error ConvertData: %s", err.Error()), 0, 0
 	}
 
 	if dataStatus.Status.Wind < 6 || dataStatus.Status.Water < 5 {
-		return fmt.Sprintf("Status Aman")
+		return fmt.Sprintf("Status Aman"), dataStatus.Status.Wind, dataStatus.Status.Water
 	} else if (dataStatus.Status.Water >= 6 || dataStatus.Status.Water <= 8) || (dataStatus.Status.Wind >= 7 || dataStatus.Status.Wind <= 15) {
-		return fmt.Sprintf("Status Siaga")
+		return fmt.Sprintf("Status Siaga"), dataStatus.Status.Wind, dataStatus.Status.Water
 	} else {
-		return fmt.Sprintf("Bahaya")
+		return fmt.Sprintf("Bahaya"), dataStatus.Status.Wind, dataStatus.Status.Water
 	}
 
 }
@@ -83,10 +85,25 @@ func writeFile() {
 }
 
 func main() {
-	writeFile()
-	for _ = range time.Tick(time.Second * 2) {
-		fmt.Println("Reload data")
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeFile()
-		// readFile()
-	}
+		status, wind, water := readFile()
+
+		data := map[string]string{
+			"Status": status,
+			"Wind":   strconv.Itoa(wind),
+			"Water":  strconv.Itoa(water),
+		}
+
+		t, err := template.ParseFiles("index.html")
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			return
+		}
+
+		t.Execute(w, data)
+
+	})
+	http.ListenAndServe(":8000", nil)
 }
